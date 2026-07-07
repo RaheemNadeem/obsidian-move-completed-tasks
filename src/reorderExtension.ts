@@ -7,7 +7,7 @@ import {
   sortChecklistBlockDetailed,
   SortOptions,
 } from "./checklistSorter";
-import { isCheckedTaskLine, isTaskLine, parseTaskLine } from "./utilities";
+import { isTaskLine, parseTaskLine } from "./utilities";
 
 /**
  * Build the CodeMirror 6 editor extension that powers the plugin.
@@ -26,13 +26,19 @@ export function createMoveCompletedTasksExtension(
   // Pending debounce timer, or null when idle.
   let timer: ReturnType<typeof setTimeout> | null = null;
 
-  /** True if the line at `newPos` was NOT already a completed task pre-edit. */
-  function wasNotAlreadyChecked(update: ViewUpdate, newPos: number): boolean {
+  /**
+   * True when the checkbox state of the line at `newPos` differs from before
+   * this edit — in *either* direction (checked→unchecked or unchecked→checked).
+   * A line that was not a task before counts as unchecked, so a newly-typed
+   * completed task also sorts, while typing a new empty task, or editing a
+   * task's text, does not.
+   */
+  function checkedStateFlipped(update: ViewUpdate, newPos: number, nowChecked: boolean): boolean {
     const inverted = update.changes.invert(update.startState.doc);
     const oldPos = inverted.mapPos(newPos, 1);
-    const oldLine = update.startState.doc.lineAt(oldPos).text;
-    const old = parseTaskLine(oldLine);
-    return !(old && old.checked);
+    const before = parseTaskLine(update.startState.doc.lineAt(oldPos).text);
+    const wasChecked = before ? before.checked : false;
+    return wasChecked !== nowChecked;
   }
 
   /** Unique checklist blocks containing the given zero-based line indices. */
@@ -133,18 +139,21 @@ export function createMoveCompletedTasksExtension(
     if (!getSettings().enableAutoSort || applying || !update.docChanged) return;
 
     const doc = update.state.doc;
-    const newlyChecked = new Set<number>();
+    const toggled = new Set<number>();
     update.changes.iterChanges((_fromA, _toA, fromB, toB) => {
       const firstLine = doc.lineAt(fromB).number;
       const lastLine = doc.lineAt(Math.max(fromB, toB)).number;
       for (let lineNo = firstLine; lineNo <= lastLine; lineNo++) {
         const line = doc.line(lineNo);
-        if (isCheckedTaskLine(line.text) && wasNotAlreadyChecked(update, line.from)) {
-          newlyChecked.add(lineNo - 1);
+        const task = parseTaskLine(line.text);
+        // Re-sort on any checkbox flip: checking sinks the item, unchecking
+        // lifts it back above the completed ones.
+        if (task && checkedStateFlipped(update, line.from, task.checked)) {
+          toggled.add(lineNo - 1);
         }
       }
     });
-    if (newlyChecked.size > 0) schedule(update.view, [...newlyChecked]);
+    if (toggled.size > 0) schedule(update.view, [...toggled]);
   }
 
   return EditorView.updateListener.of(handleUpdate);
