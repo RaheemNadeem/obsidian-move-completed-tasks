@@ -1,10 +1,1 @@
-{
-  "id": "move-completed-tasks",
-  "name": "Move Completed Tasks",
-  "version": "1.0.1",
-  "minAppVersion": "1.4.0",
-  "description": "Automatically move completed checklist items (- [x]) to the bottom of their checklist, like Microsoft To Do or Google Keep. Supports nested tasks; works on desktop and mobile.",
-  "author": "Mohammed Raheem",
-  "authorUrl": "https://github.com/RaheemNadeem",
-  "isDesktopOnly": false
-}
+{"id":"move-completed-tasks","name":"Move Completed Tasks","version":"1.1.0","minAppVersion":"1.4.0","description":"Automatically move completed checklist items (- [x]) to the bottom of their checklist, with an optional divider heading (e.g. '✅ Completed') between unchecked and checked items. Supports nested tasks; works on desktop and mobile.","author":"Mohammed Raheem","authorUrl":"https://github.com/RaheemNadeem","isDesktopOnly":false}
