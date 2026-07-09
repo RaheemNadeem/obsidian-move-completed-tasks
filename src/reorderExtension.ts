@@ -81,6 +81,8 @@ export function createMoveCompletedTasksExtension(
     const opts: SortOptions = {
       direction: settings.sortDirection,
       ignoreNested: settings.ignoreNested,
+      insertDivider: settings.insertDivider,
+      dividerText: settings.dividerText,
     };
 
     const ranges = settings.onlySortCurrentChecklist

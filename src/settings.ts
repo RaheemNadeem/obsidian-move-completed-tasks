@@ -3,28 +3,23 @@ import type MoveCompletedTasksPlugin from "./main";
 
 /** Persisted plugin settings. */
 export interface MoveCompletedTasksSettings {
-  /** Master switch for automatic sorting. */
   enableAutoSort: boolean;
-  /** Debounce, in milliseconds, between ticking a box and moving it (0–5000). */
   delay: number;
-  /** Whether completed tasks go to the bottom or the top of their group. */
   sortDirection: "bottom" | "top";
-  /**
-   * When `true`, only the edited checklist is reordered. When `false`, every
-   * checklist block in the note is tidied whenever any box is ticked.
-   */
   onlySortCurrentChecklist: boolean;
-  /** When `true`, nested sub-lists are left untouched (only top level sorts). */
   ignoreNested: boolean;
+  insertDivider: boolean;
+  dividerText: string;
 }
 
-/** Factory-default settings. */
 export const DEFAULT_SETTINGS: MoveCompletedTasksSettings = {
   enableAutoSort: true,
   delay: 0,
   sortDirection: "bottom",
   onlySortCurrentChecklist: true,
   ignoreNested: false,
+  insertDivider: true,
+  dividerText: "✅ Completed",
 };
 
 /** Settings tab under Settings → Community plugins → Move Completed Tasks. */
@@ -91,6 +86,26 @@ export class MoveCompletedTasksSettingTab extends PluginSettingTab {
             this.plugin.settings.onlySortCurrentChecklist = value;
             await this.plugin.saveSettings();
           }),
+      );
+
+    new Setting(containerEl)
+      .setName("Insert completed divider")
+      .setDesc("Insert a heading between unchecked and checked items.")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.insertDivider).onChange(async (value) => {
+          this.plugin.settings.insertDivider = value;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Divider text")
+      .setDesc("The heading text inserted between unchecked and completed items.")
+      .addText((text) =>
+        text.setValue(this.plugin.settings.dividerText).onChange(async (value) => {
+          this.plugin.settings.dividerText = value;
+          await this.plugin.saveSettings();
+        }),
       );
 
     new Setting(containerEl)

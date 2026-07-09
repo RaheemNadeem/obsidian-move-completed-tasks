@@ -11,13 +11,10 @@ import { isTaskLine, parseTaskLine } from "./utilities";
 
 /** Options controlling how a checklist block is reordered. */
 export interface SortOptions {
-  /** Where completed items should end up within each sibling group. */
   direction: "bottom" | "top";
-  /**
-   * When `true`, only the top-level items of a block are reordered; nested
-   * sub-lists keep their original order and stay attached to their parent.
-   */
   ignoreNested: boolean;
+  insertDivider: boolean;
+  dividerText: string;
 }
 
 /** The inclusive line range `[start, end]` of a contiguous checklist block. */
@@ -147,6 +144,26 @@ export function sortChecklistBlockDetailed(
   const lines: string[] = [];
   const order: number[] = [];
   flatten(ordered, lines, order);
+
+  // Insert divider heading between unchecked and checked items
+  if (opts.insertDivider && opts.dividerText) {
+    const firstCheckedIdx = lines.findIndex((l) => {
+      const p = parseTaskLine(l);
+      return p?.checked === true;
+    });
+    if (firstCheckedIdx > 0) {
+      // Match indent of the first item in the block
+      const firstParsed = parseTaskLine(lines[0]);
+      let indentStr = "";
+      if (firstParsed) {
+        indentStr = " ".repeat(firstParsed.indent);
+      }
+      const dividerLine = `${indentStr}#### ${opts.dividerText}`;
+      lines.splice(firstCheckedIdx, 0, dividerLine);
+      order.splice(firstCheckedIdx, 0, -1);
+    }
+  }
+
   return { lines, order };
 }
 
