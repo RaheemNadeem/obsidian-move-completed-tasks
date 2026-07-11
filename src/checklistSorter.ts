@@ -17,6 +17,17 @@ export interface SortOptions {
   dividerText: string;
 }
 
+/** Check if a line is blank. */
+function isBlankLine(line: string): boolean {
+  return line.trim() === "";
+}
+
+/** Check if a line looks like a level-4 heading (potential divider). */
+function mightBeDividerLine(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.startsWith("####") && trimmed.length > 4;
+}
+
 /** The inclusive line range `[start, end]` of a contiguous checklist block. */
 export interface BlockRange {
   start: number;
@@ -47,9 +58,9 @@ interface TaskNode {
 /**
  * Find the contiguous checklist block that contains `lineIndex`.
  *
- * A block is a maximal run of consecutive task lines. Any non-task line —
- * including a blank line or a paragraph — ends the block, so two lists that are
- * visually separate are never merged (see the plugin's "scope detection" rule).
+ * A block includes task lines, and may also include divider headings and blank
+ * lines that are internal to the list (surrounded by tasks on both sides). Any
+ * genuine separators (paragraphs, headings not bridging to tasks) end the block.
  *
  * @param lines All lines of the note.
  * @param lineIndex Zero-based index of a line inside the block.
@@ -60,9 +71,47 @@ export function findBlockBounds(lines: string[], lineIndex: number): BlockRange 
     return null;
   }
   let start = lineIndex;
-  while (start - 1 >= 0 && isTaskLine(lines[start - 1])) start--;
+  while (start - 1 >= 0) {
+    const prevLine = lines[start - 1];
+    if (isTaskLine(prevLine)) {
+      start--;
+    } else if (mightBeDividerLine(prevLine) || isBlankLine(prevLine)) {
+      // Look back past any run of divider/blank lines
+      let lookBack = start - 2;
+      while (lookBack >= 0 && (mightBeDividerLine(lines[lookBack]) || isBlankLine(lines[lookBack]))) {
+        lookBack--;
+      }
+      // If there's a task line before them, include the whole run (internal)
+      if (lookBack >= 0 && isTaskLine(lines[lookBack])) {
+        start = lookBack + 1;
+      } else {
+        break; // Not internal, stop here
+      }
+    } else {
+      break; // Real separator (paragraph or other)
+    }
+  }
   let end = lineIndex;
-  while (end + 1 < lines.length && isTaskLine(lines[end + 1])) end++;
+  while (end + 1 < lines.length) {
+    const nextLine = lines[end + 1];
+    if (isTaskLine(nextLine)) {
+      end++;
+    } else if (mightBeDividerLine(nextLine) || isBlankLine(nextLine)) {
+      // Look ahead past any run of divider/blank lines
+      let lookAhead = end + 2;
+      while (lookAhead < lines.length && (mightBeDividerLine(lines[lookAhead]) || isBlankLine(lines[lookAhead]))) {
+        lookAhead++;
+      }
+      // If there's a task line after them, include the whole run (internal)
+      if (lookAhead < lines.length && isTaskLine(lines[lookAhead])) {
+        end = lookAhead - 1;
+      } else {
+        break; // Not internal, stop here
+      }
+    } else {
+      break; // Real separator
+    }
+  }
   return { start, end };
 }
 
