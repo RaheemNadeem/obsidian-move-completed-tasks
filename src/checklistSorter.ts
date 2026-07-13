@@ -17,11 +17,6 @@ export interface SortOptions {
   dividerText: string;
 }
 
-/** Check if a line is the divider heading. */
-function isDividerLine(line: string, dividerText: string): boolean {
-  return line.trim() === ("#### " + dividerText).trim();
-}
-
 /** Check if a line is blank. */
 function isBlankLine(line: string): boolean {
   return line.trim() === "";
@@ -77,44 +72,46 @@ export function findBlockBounds(lines: string[], lineIndex: number): BlockRange 
   }
   let start = lineIndex;
   while (start - 1 >= 0) {
-    const prevLine = lines[start - 1];
-    if (isTaskLine(prevLine)) {
+    const prev = lines[start - 1];
+    if (isTaskLine(prev)) {
       start--;
-    } else if (mightBeDividerLine(prevLine) || isBlankLine(prevLine)) {
-      // Look back past any run of divider/blank lines
-      let lookBack = start - 2;
-      while (lookBack >= 0 && (mightBeDividerLine(lines[lookBack]) || isBlankLine(lines[lookBack]))) {
-        lookBack--;
-      }
-      // If there's a task line before them, include the whole run (internal)
-      if (lookBack >= 0 && isTaskLine(lines[lookBack])) {
-        start = lookBack + 1;
-      } else {
-        break; // Not internal, stop here
-      }
+      continue;
+    }
+    if (!mightBeDividerLine(prev) && !isBlankLine(prev)) break; // real separator
+    // Scan the whole run of divider/blank lines just above the block.
+    let runTop = start - 1;
+    let hasDivider = mightBeDividerLine(prev);
+    while (runTop - 1 >= 0 && (mightBeDividerLine(lines[runTop - 1]) || isBlankLine(lines[runTop - 1]))) {
+      runTop--;
+      if (mightBeDividerLine(lines[runTop])) hasDivider = true;
+    }
+    // Bridge the run ONLY when it contains a divider heading AND a task precedes
+    // it — the "unchecked … #### divider … checked" shape of one list. A
+    // blank-only gap (no divider) separates two lists and must not merge them.
+    if (hasDivider && runTop - 1 >= 0 && isTaskLine(lines[runTop - 1])) {
+      start = runTop;
     } else {
-      break; // Real separator (paragraph or other)
+      break;
     }
   }
   let end = lineIndex;
   while (end + 1 < lines.length) {
-    const nextLine = lines[end + 1];
-    if (isTaskLine(nextLine)) {
+    const next = lines[end + 1];
+    if (isTaskLine(next)) {
       end++;
-    } else if (mightBeDividerLine(nextLine) || isBlankLine(nextLine)) {
-      // Look ahead past any run of divider/blank lines
-      let lookAhead = end + 2;
-      while (lookAhead < lines.length && (mightBeDividerLine(lines[lookAhead]) || isBlankLine(lines[lookAhead]))) {
-        lookAhead++;
-      }
-      // If there's a task line after them, include the whole run (internal)
-      if (lookAhead < lines.length && isTaskLine(lines[lookAhead])) {
-        end = lookAhead - 1;
-      } else {
-        break; // Not internal, stop here
-      }
+      continue;
+    }
+    if (!mightBeDividerLine(next) && !isBlankLine(next)) break; // real separator
+    let runBot = end + 1;
+    let hasDivider = mightBeDividerLine(next);
+    while (runBot + 1 < lines.length && (mightBeDividerLine(lines[runBot + 1]) || isBlankLine(lines[runBot + 1]))) {
+      runBot++;
+      if (mightBeDividerLine(lines[runBot])) hasDivider = true;
+    }
+    if (hasDivider && runBot + 1 < lines.length && isTaskLine(lines[runBot + 1])) {
+      end = runBot;
     } else {
-      break; // Real separator
+      break;
     }
   }
   return { start, end };
@@ -191,27 +188,41 @@ export function sortChecklistBlockDetailed(
   blockLines: string[],
   opts: SortOptions,
 ): SortResult {
-  if (blockLines.length < 2) {
-    return { lines: blockLines.slice(), order: blockLines.map((_, i) => i) };
-  }
-  const ordered = orderNodes(buildTree(blockLines), opts);
-  const lines: string[] = [];
-  const order: number[] = [];
-  flatten(ordered, lines, order);
+  // Normalize first: keep ONLY real task lines, dropping any existing divider
+  // headings and blank lines that ended up inside the block. `cleanToOrig` maps
+  // each kept line back to its original index in `blockLines`, so the returned
+  // `order` permutation stays valid for cursor preservation.
+  const cleaned: string[] = [];
+  const cleanToOrig: number[] = [];
+  blockLines.forEach((line, i) => {
+    if (isTaskLine(line)) {
+      cleaned.push(line);
+      cleanToOrig.push(i);
+    }
+  });
 
-  // Insert divider heading between unchecked and checked items
+  // Fewer than two real tasks: nothing to reorder. Returning just the cleaned
+  // task(s) also strips a stray divider/blank left around a single task.
+  if (cleaned.length < 2) {
+    return { lines: cleaned.slice(), order: cleanToOrig.slice() };
+  }
+
+  const ordered = orderNodes(buildTree(cleaned), opts);
+  const lines: string[] = [];
+  const cleanOrder: number[] = [];
+  flatten(ordered, lines, cleanOrder);
+  // Remap cleaned-array indexes back to original blockLines indexes.
+  const order = cleanOrder.map((ci) => cleanToOrig[ci]);
+
+  // Insert EXACTLY ONE divider, and only at a real boundary: at least one
+  // unchecked item must precede the first checked item. Zero checked OR zero
+  // unchecked items => no divider (this is how stray/duplicate headings and
+  // all-done / all-todo lists end up with no boundary heading).
   if (opts.insertDivider && opts.dividerText) {
-    const firstCheckedIdx = lines.findIndex((l) => {
-      const p = parseTaskLine(l);
-      return p?.checked === true;
-    });
+    const firstCheckedIdx = lines.findIndex((l) => parseTaskLine(l)?.checked === true);
     if (firstCheckedIdx > 0) {
-      // Match indent of the first item in the block
       const firstParsed = parseTaskLine(lines[0]);
-      let indentStr = "";
-      if (firstParsed) {
-        indentStr = " ".repeat(firstParsed.indent);
-      }
+      const indentStr = firstParsed ? " ".repeat(firstParsed.indent) : "";
       const dividerLine = `${indentStr}#### ${opts.dividerText}`;
       lines.splice(firstCheckedIdx, 0, dividerLine);
       order.splice(firstCheckedIdx, 0, -1);
