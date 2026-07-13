@@ -1,0 +1,46 @@
+name: Release Obsidian plugin
+
+# Fires when a version tag (e.g. 1.1.3) is pushed. Builds the plugin and
+# publishes a GitHub Release with the assets BRAT / Obsidian need:
+# main.js, manifest.json, styles.css. (main.js is gitignored; CI builds it.)
+on:
+  push:
+    tags:
+      - "*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Build plugin
+        run: |
+          npm install --legacy-peer-deps
+          npm run build
+
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          # Guard: the tag must match manifest.json version, or BRAT will mismatch.
+          manifest_version="$(node -p "require('./manifest.json').version")"
+          if [ "$tag" != "$manifest_version" ]; then
+            echo "::error::Tag ($tag) does not match manifest.json version ($manifest_version)"
+            exit 1
+          fi
+          assets="main.js manifest.json"
+          [ -f styles.css ] && assets="$assets styles.css"
+          gh release create "$tag" \
+            --title="$tag" \
+            --generate-notes \
+            $assets
